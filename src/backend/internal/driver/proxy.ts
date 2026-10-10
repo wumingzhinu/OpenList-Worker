@@ -128,12 +128,24 @@ const DRIVER_FORCE_PROXY = new Set<string>([
   "local",
 ])
 
-/** 默认代理（Go: Config.DefaultProxy() = PreferProxy） */
+/**
+ * 默认代理（Go: Config.DefaultProxy() = PreferProxy）。
+ *
+ * 表单默认值含义：这里是 true 时，新建存储的 `web_proxy` 默认勾选，
+ * 即由 Worker 转发字节流；客户端因此只能单线程下，Worker 也会吃满
+ * CPU / 子请求预算，且受平台响应体上限约束（见 proxy_request.ts）。
+ *
+ * `123pan` / `123open` 已移出本表：它们的直链只要求 Referer + User-Agent，
+ * 而 proxy_request.ts 的 PRIVATE_HEADER_NAMES 明确判定这两个头
+ * 「浏览器/下载器可以自己提供」，不构成必须服务端代理的理由。
+ * 保留在表内只会让 Cloudflare Workers 替客户端搬字节，白白放弃
+ * 客户端多线程分片的能力（参考 YunX：同一批直链可开 32~512 线程）。
+ *
+ * 需要管理员仍可用 `web_proxy` 显式打开代理，行为不受影响。
+ */
 const DRIVER_PREFER_PROXY = new Set<string>([
   "webdav",
   "baidunetdisk",
-  "123pan",
-  "123open",
   "123panshare",
 ])
 

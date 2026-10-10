@@ -61,14 +61,19 @@ test("MustProxy：只包含 Go 标了 OnlyProxy / NoLinkURL 的驱动", () => {
 })
 
 test("PreferProxy：与 Go 的 DefaultProxy() 一致", () => {
-  for (const driver of [
-    "WebDav",
-    "BaiduNetdisk",
-    "123Pan",
-    "123PanShare",
-    "123Open",
-  ]) {
+  for (const driver of ["WebDav", "BaiduNetdisk", "123PanShare"]) {
     assert.equal(driverPreferProxy(driver), true, `${driver} 应为 PreferProxy`)
+  }
+
+  // 123pan / 123open 已移出 PreferProxy：直链只需 Referer + UA
+  // （proxy_request.ts 判定这两头「浏览器/下载器可自供」），
+  // 留在表内会让 Worker 替客户端搬字节、且客户端无法多线程分片。
+  for (const driver of ["123Pan", "123Open"]) {
+    assert.equal(
+      driverPreferProxy(driver),
+      false,
+      `${driver} 应默认为直链（交给客户端多线程），不再走服务端代理`,
+    )
   }
   for (const driver of ["Onedrive", "GoogleDrive", "S3", "Terabox"]) {
     assert.equal(

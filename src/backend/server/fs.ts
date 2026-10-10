@@ -1295,12 +1295,56 @@ fsRouter.post("/link", async (c) => {
     }
     const driver = await getDriver(resolved.storage.driver, resolved.storage)
     try {
-      const item = await driver.get(reqPath, resolved.physical ?? "/")
-      if (item && item.raw_url) {
+      // 优先用驱动自己的 link()：它返回 { url, headers }，即「直链 + 精确请求头」。
+      // 这是多线程下载器唯一能拿到正确 UA / Referer / Cookie 的途径 ——
+      // 302 只能交给浏览器自带的那一套头，拿不到驱动指定的值。
+      //
+      // 注意：link() 返回的头可能含 Cookie / Authorization 等私有鉴权信息。
+      // 本端点已是 admin-only（见上方 isAdmin 判定），受众就是「正在配置下载
+      // 管理器的管理员」，因此这里原样返回是恰当的。
+      let linkHeaders: Record<string, string> | undefined
+      let linkUrl: string | undefined
+      let linkOk = false
+      const linkFn = (driver as any).link
+      if (typeof linkFn === "function") {
+        try {
+          const linked = await linkFn.call(
+            driver,
+            reqPath,
+            resolved.physical ?? "/",
+          )
+          if (linked?.url) {
+            linkUrl = linked.url
+            linkHeaders = linked.headers
+            linkOk = true
+          }
+        } catch {
+          // link() 失败不阻断：回退到 driver.get() 的 raw_url
+        }
+      }
+
+      if (linkOk) {
         return c.json({
           code: 200,
           message: "success",
-          data: { url: item.raw_url },
+          data:
+            linkHeaders && Object.keys(linkHeaders).length
+              ? { url: linkUrl, headers: linkHeaders }
+              : { url: linkUrl },
+        })
+      }
+
+      // link() 不可用或未返回 url 时才走 driver.get()，省一次上游往返
+      const item = await driver.get(reqPath, resolved.physical ?? "/")
+      if (item?.raw_url) {
+        const headers =
+          item.raw_url_headers && Object.keys(item.raw_url_headers).length
+            ? item.raw_url_headers
+            : undefined
+        return c.json({
+          code: 200,
+          message: "success",
+          data: headers ? { url: item.raw_url, headers } : { url: item.raw_url },
         })
       }
     } finally {
